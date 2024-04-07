@@ -1,5 +1,7 @@
 import os
 import sys
+import serial
+import time
 
 sys.stdout = open(os.devnull, "w")
 
@@ -9,7 +11,10 @@ from ultralytics import YOLO
 
 sys.stdout = sys.__stdout__
 
-model = YOLO("Models/yolov8n.pt")
+
+ser = serial.Serial("COM3", 115200)
+
+model = YOLO("Models/yolov5n.pt")
 
 sys.stdout = sys.__stdout__
 
@@ -72,6 +77,7 @@ while True:
 
         if mean_flow > sensitivity:
             print("Person moved in frame:", frame_number)
+            ser.write(b"on\n")
 
         prev_gray = gray
 
