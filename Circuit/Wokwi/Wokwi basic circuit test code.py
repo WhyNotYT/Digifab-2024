@@ -1,12 +1,13 @@
-# Test code for the Wwokwi.com basic circuit
-# https://wokwi.com/projects/394594113656475649
-
 # Basic circuit plan for the peili project: On/Off switch, buzzer, signal led, servo motor and Pi Pico W with test code
 # Code for playing music with buzzer is from https://www.tomshardware.com/how-to/buzzer-music-raspberry-pi-pico
+# Example code is for 180 degree servo, you need different code for continous rotation servo
+# https://github.com/TTitanUA/micropython_servo_pdm_360 might work
+# TODO: Check if the micro servo needs logic level shifter to work (5V->3.3V)
+# Resistor on buzzer might not be necessary
 
 #from picozero import Speaker #If using buzzer for just on/off sound
 from machine import Pin, PWM # Pins, PWM control for buzzer
-from picozero import Servo  # importing Servo class to easily control the servo motor
+from picozero import Servo  # importing Servo class to  control the servo motor
 from time import sleep
 
 # creating a Speaker, led and servo object
@@ -110,7 +111,7 @@ tones = {
 }
 
 # Song to be played
-song = ["E5","G5","A5","P","E5","G5","B5","A5","P","E5","G5","A5","P","G5","E5"]
+song = ["E5","G5","A5","P","E5","G5","B5","A5","P"]
 song2 = ["D2","CS2","C2","B1"] #  D, C#, C, B
 song3 = ["AS1","A1","GS1","G1","G1"] # B-flat/A#, A, A-flat/G# and G
 
@@ -130,15 +131,14 @@ def playsong(mysong):
         sleep(0.3)
     bequiet()
 
-# continuously beep at 1 sec interval while the board has power
-# Test code will also turn led on/off with buzzer and turn servo motor between full and zero position 
-# note: a passive buzzer can also be used to play different tones
+# If switch is on the board will alternate between 2 states: led on + song + servo at max pos or led off + song3 + servo at min pos
+# If switch is off, then nothing will happen
 while True:
     if switch.value() == 1:
         #speaker.on()
         led.toggle()
-        playsong(song)
         servo.value = 1
+        playsong(song)
         sleep(1)
         #speaker.off()
         led.toggle()
