@@ -1,4 +1,5 @@
 # Basic circuit plan for the peili project: On/Off switch, buzzer, signal led, servo motor and Pi Pico W with test code
+# Wokwi link: https://wokwi.com/projects/394594113656475649
 # Code for playing music with buzzer is from https://www.tomshardware.com/how-to/buzzer-music-raspberry-pi-pico
 # Example code is for 180 degree servo, you need different code for continous rotation servo
 # https://github.com/TTitanUA/micropython_servo_pdm_360 might work
