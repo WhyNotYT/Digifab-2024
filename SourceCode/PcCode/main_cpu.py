@@ -1,6 +1,6 @@
 import os
 import sys
-import serial
+import socket
 import time
 
 sys.stdout = open(os.devnull, "w")
@@ -10,22 +10,30 @@ import numpy as np
 from ultralytics import YOLO
 
 sys.stdout = sys.__stdout__
+use_pico = True
+# Configure server IP and port
+server_ip = "192.168.179.39"  # Change this to the IP address of your Pico
+server_port = 12345
 
 
-ser = serial.Serial("COM3", 115200)
+# Connect to the server
+if use_pico:
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client_socket.connect((server_ip, server_port))
 
 model = YOLO("Models/yolov5n.pt")
 
 sys.stdout = sys.__stdout__
 
-sensitivity = 0.25
+sensitivity = 10
 
 cap = cv2.VideoCapture(0)
 ret, prev_frame = cap.read()
 prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
 
 frame_number = 0
-
+if use_pico:
+    client_socket.sendall("start".encode())
 while True:
     ret, frame = cap.read()
     frame_number += 1
@@ -63,21 +71,21 @@ while True:
                         if label == "person":
                             mask[y1:y2, x1:x2] = 255
 
-        # Compute the mean flow within the masked area
-        masked_magnitude = cv2.bitwise_and(magnitude, magnitude, mask=mask)
-        mean_flow = masked_magnitude.mean()
-        print(mean_flow)
-        # Display flow vectors in a separate window
-        hsv = np.zeros_like(frame)
-        hsv[..., 1] = 255
-        hsv[..., 0] = angle * 180 / np.pi / 2
-        hsv[..., 2] = cv2.normalize(masked_magnitude, None, 0, 255, cv2.NORM_MINMAX)
-        flow_image = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-        cv2.imshow("Flow Vectors", flow_image)
-
-        if mean_flow > sensitivity:
-            print("Person moved in frame:", frame_number)
-            ser.write(b"on\n")
+                            # Compute the mean flow within the masked area
+                            masked_magnitude = cv2.bitwise_and(
+                                magnitude, magnitude, mask=mask
+                            )
+                            mean_flow = (masked_magnitude.mean() / (x2 - x1)) * 4000
+                            print(mean_flow)
+                            if mean_flow > sensitivity:
+                                send_text = (
+                                    "mov "
+                                    + str(int((((x1 + x2) / 2) - 170) * 0.3))
+                                    + " "
+                                )
+                                print(send_text)
+                                if use_pico:
+                                    client_socket.sendall(send_text.encode())
 
         prev_gray = gray
 
