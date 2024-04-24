@@ -4,10 +4,12 @@ import network
 import buzzer_music
 from servo import Servo
 import time
+from machine import I2C
+from vl53l1x import VL53L1X
 
 # Configure Wi-Fi connection
-wifi_ssid = "Peili"
-wifi_password = "12345678Peili"
+wifi_ssid = "panoulu"
+wifi_password = ""
 server_ip = "0.0.0.0"
 server_port = 12345
 
@@ -18,77 +20,103 @@ wifi.connect(wifi_ssid, wifi_password)
 
 # Wait until connected
 while not wifi.isconnected():
-    pass
+    try:
+        print("Trying to connect...")
+        print(wifi.scan())
+        print(wifi.status())
+        wifi.connect(wifi_ssid, wifi_password)
+        print("not connected.")
+        machine.soft_reset()
+    except OSError as error:
+        print(f"error is {error}")
 
 # Print Pico's IP address
 ip_address = wifi.ifconfig()[0]
 print("Pico IP address:", ip_address)
 
 # Setup buzzer
+
 buzzer = machine.Pin("GP17", machine.Pin.OUT)
 song = "0 C#5 6 41;6 D#5 6 41;12 G#4 4 41;16 D#5 6 41;22 F5 6 41;28 G#5 1 41;29 F#5 1 41;30 F5 1 41;31 D#5 1 41;32 C#5 6 41;38 D#5 6 41;44 G#4 4 41"
 mySong = buzzer_music.music(song, pins=[machine.Pin("GP17")])
 my_servo = Servo(pin_id="GP15")
-glb_time = 0.0
-music_stop_time = 3
+i2c = I2C(id=0, sda=machine.Pin("GP4"), scl=machine.Pin("GP5"), freq=400000)
+
+print(i2c.scan())
+distance = VL53L1X(i2c)
+
 game_running = False
-song_glb_timer = 0
-servo_sweep_speed = 1
-servo_alt = False
-servo_angle = 0
-once_after_resume = False
+last_movement_time = 0
+scanning = False
+sweep_start_time = 0
+pause_sweeping = True
+data_glb = ""
 
 
-# Function to handle buzzer control
 def on_input(data):
-    global game_running
-    global song_glb_timer
-
+    global game_running, last_movement_time, scanning, sweep_start_time, pause_sweeping, data_glb
     print(data)
+    data_glb = data
     if data.lower() == "start":
         # Start the buzzer
-        # mySong.resume()
+        mySong.resume()
         game_running = True
         print("Buzzer started")
+        last_movement_time = time.ticks_ms()
+    # data is for example mov 180, for movement sensed in 180 degrees
     elif "mov" in data.lower():
         # Stop the buzzer
-        song_glb_timer = glb_time + music_stop_time
-        mySong.stop()
-        x_cord = float(data.split(" ")[1])
-        my_servo.write(x_cord)
+        if scanning:
+            x_cord = float(data.split(" ")[1])
+            scanning = False
+            my_servo.write(x_cord)
+            last_movement_time = time.ticks_ms()
+            sweep_start_time += 5000
+            pause_sweeping = True
 
 
 # Function to handle non-blocking delay
 def game_loop(timer):
+    global game_running, last_movement_time, scanning, sweep_start_time, pause_sweeping, data_glb, distance
+    try:
+        print(distance.read())
+        if distance.read() < 100:
+            game_running = False
+            mySong.stop()
+    except:
+        print("Cant read distance.")
+        pass
     if not game_running:
         return
 
-    global glb_time
-    global servo_angle
-    global servo_alt
-    global my_servo
-    global once_after_resume
+    print(distance.read())
 
-    glb_time += delta_time / 1000.0
-
-    if song_glb_timer < glb_time:
-        if not once_after_resume:
-            mySong.restart()
-            once_after_resume = True
-        mySong.tick()
-
-        if servo_alt:
-            servo_angle -= servo_sweep_speed
-        else:
-            servo_angle += servo_sweep_speed
-
-        if servo_angle >= 180 or servo_angle <= 0:
-            servo_alt = not servo_alt
-        my_servo.write(servo_angle)
-    else:
+    current_time = time.ticks_ms()
+    mySong.tick()
+    if time.ticks_diff(current_time, last_movement_time) > 10000:
         mySong.stop()
-        once_after_resume = False
-        buzzer.value(0)
+        print("Buzzer Stopped.")
+        scanning = True
+        pause_sweeping = False
+
+        # Start servo sweeping for 5 seconds
+        sweep_start_time = time.ticks_ms()
+        if time.ticks_diff(current_time, sweep_start_time) < 5000:
+            # Sweep servo
+            if scanning and not pause_sweeping:
+                angle = (
+                    (current_time % 5000) / 5000 * 180
+                )  # Sweep over 180 degrees in 5 seconds
+                my_servo.write(angle)
+
+            current_time = time.ticks_ms()
+            if time.ticks_diff(current_time, last_movement_time) < 5000:
+                return
+        # If no movement detected for 5 seconds after servo sweep, resume buzzer
+        if time.ticks_diff(current_time, last_movement_time) > 5000:
+            mySong.resume()
+            last_movement_time = current_time
+            print("Buzzer resumed")
 
 
 # Setup server socket
@@ -111,6 +139,6 @@ timer.init(period=delta_time, mode=machine.Timer.PERIODIC, callback=game_loop)
 # Main loop
 song_playing = False
 while True:
-    data = conn.recv(1024).decode().strip()
-    if data:
-        on_input(data)
+    data_glb = conn.recv(1024).decode().strip()
+    if data_glb:
+        on_input(data_glb)

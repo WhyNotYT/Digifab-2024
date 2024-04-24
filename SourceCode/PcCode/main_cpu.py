@@ -10,9 +10,9 @@ import numpy as np
 from ultralytics import YOLO
 
 sys.stdout = sys.__stdout__
-use_pico = True
+use_pico = False
 # Configure server IP and port
-server_ip = "192.168.179.39"  # Change this to the IP address of your Pico
+server_ip = "100.75.112.35"  # Change this to the IP address of your Pico
 server_port = 12345
 
 
@@ -27,7 +27,25 @@ sys.stdout = sys.__stdout__
 
 sensitivity = 10
 
-cap = cv2.VideoCapture(0)
+
+def returnCameraIndexes():
+    # checks the first 10 indexes.
+    index = 0
+    arr = []
+    i = 10
+    while i > 0:
+        cap = cv2.VideoCapture(index)
+        if cap.read()[0]:
+            arr.append(index)
+            cap.release()
+        index += 1
+        i -= 1
+    return arr
+
+
+# print(returnCameraIndexes())
+cap = cv2.VideoCapture(2)
+
 ret, prev_frame = cap.read()
 prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
 
