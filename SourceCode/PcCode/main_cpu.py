@@ -2,6 +2,7 @@ import os
 import sys
 import socket
 import time
+import math
 
 sys.stdout = open(os.devnull, "w")
 
@@ -10,22 +11,75 @@ import numpy as np
 from ultralytics import YOLO
 
 sys.stdout = sys.__stdout__
-use_pico = False
+use_pico = True
 # Configure server IP and port
-server_ip = "100.75.112.35"  # Change this to the IP address of your Pico
+server_ip = "192.168.128.39"  # Change this to the IP address of your Pico
 server_port = 12345
 
+client_socket = None
 
-# Connect to the server
+
+def clamp(n, min, max):
+    if n < min:
+        return min
+    elif n > max:
+        return max
+    else:
+        return n
+
+
+def is_socket_closed(sock: socket.socket) -> bool:
+    try:
+        # this will try to read bytes without blocking and also without removing them from buffer (peek only)
+        data = sock.recv(16, socket.MSG_DONTWAIT | socket.MSG_PEEK)
+        if len(data) == 0:
+            return True
+    except BlockingIOError:
+        return False  # socket is open and reading from it would block
+    except ConnectionResetError:
+        return True  # socket was closed for some other reason
+    except Exception as e:
+        print("unexpected exception when checking if a socket is closed")
+        return False
+    return False
+
+
+def connect_to_pico():
+    global client_socket
+    if not use_pico:
+        return
+    try:
+        print("Trying to connect...")
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_socket.connect((server_ip, server_port))
+        print("Connected!")
+    except:
+        print("Error")
+        connect_to_pico()
+    # while client_socket is None:
+    #     try:
+    #         print("Trying to connect...")
+    #         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    #         client_socket.connect((server_ip, server_port))
+    #     except:
+    #         continue
+    # while is_socket_closed(client_socket):
+    #     try:
+    #         print("Trying to connect...")
+    #         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    #         client_socket.connect((server_ip, server_port))
+    #     except:
+    #         continue
+
+
 if use_pico:
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client_socket.connect((server_ip, server_port))
+    connect_to_pico()
 
 model = YOLO("Models/yolov5n.pt")
 
 sys.stdout = sys.__stdout__
 
-sensitivity = 10
+sensitivity = 300
 
 
 def returnCameraIndexes():
@@ -50,8 +104,7 @@ ret, prev_frame = cap.read()
 prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
 
 frame_number = 0
-if use_pico:
-    client_socket.sendall("start".encode())
+# Connect to the server
 while True:
     ret, frame = cap.read()
     frame_number += 1
@@ -93,17 +146,28 @@ while True:
                             masked_magnitude = cv2.bitwise_and(
                                 magnitude, magnitude, mask=mask
                             )
-                            mean_flow = (masked_magnitude.mean() / (x2 - x1)) * 4000
+                            mean_flow = (
+                                (masked_magnitude.mean() / pow(x2 - x1, 2))
+                                * 4000
+                                * 1000
+                            )
                             print(mean_flow)
                             if mean_flow > sensitivity:
                                 send_text = (
                                     "mov "
-                                    + str(int((((x1 + x2) / 2) - 170) * 0.3))
+                                    + str(
+                                        int(
+                                            clamp((((x1 + x2) / 2) - 140) * 0.3, 0, 140)
+                                        ),
+                                    )
                                     + " "
                                 )
                                 print(send_text)
                                 if use_pico:
-                                    client_socket.sendall(send_text.encode())
+                                    try:
+                                        client_socket.sendall(send_text.encode())
+                                    except:
+                                        connect_to_pico()
 
         prev_gray = gray
 
